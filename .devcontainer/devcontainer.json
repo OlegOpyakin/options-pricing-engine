@@ -1,0 +1,28 @@
+{
+  "name": "Options Pricing Engine",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [8123, 9000, 3000],
+  "portsAttributes": {
+    "8123": { "label": "ClickHouse HTTP" },
+    "9000": { "label": "ClickHouse TCP" },
+    "3000": { "label": "Grafana" }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cmake-tools",
+        "twxs.cmake",
+        "ms-python.python",
+        "grafana.grafana-vscode"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/postCreateCommand.sh",
+  "remoteUser": "vscode"
+}

@@ -1,0 +1,145 @@
+{
+  "uid": "ope-source-data",
+  "title": "Options Source Data & Quality",
+  "tags": ["options", "clickhouse", "source-data"],
+  "style": "dark",
+  "editable": true,
+  "schemaVersion": 39,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "chain_id",
+        "label": "Option chain",
+        "type": "query",
+        "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+        "query": "SELECT DISTINCT chain_id FROM options_pricing.option_quotes ORDER BY chain_id",
+        "refresh": 2,
+        "includeAll": false,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Underlyings",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT uniqExact(underlying_id) AS value FROM options_pricing.option_quotes" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^value$/" }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Option chains",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT uniqExact(chain_id) AS value FROM options_pricing.option_quotes" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^value$/" }, "colorMode": "value" }
+    },
+    {
+      "type": "stat",
+      "title": "Total option quotes",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT count() AS value FROM options_pricing.option_quotes" }
+      ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^value$/" }, "colorMode": "value" }
+    },
+    {
+      "type": "gauge",
+      "title": "Valid quotes %",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT round(100.0 * countIf(is_valid_quote) / count(), 2) AS value FROM options_pricing.option_quotes" }
+      ],
+      "fieldConfig": { "defaults": { "min": 0, "max": 100, "unit": "percent", "thresholds": { "steps": [ { "color": "red", "value": 0 }, { "color": "orange", "value": 50 }, { "color": "green", "value": 80 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^value$/" } }
+    },
+    {
+      "type": "stat",
+      "title": "Crossed markets",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT countIf(is_crossed) AS value FROM options_pricing.option_quotes" }
+      ],
+      "fieldConfig": { "defaults": { "thresholds": { "steps": [ { "color": "green", "value": 0 }, { "color": "red", "value": 1 } ] } } },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^value$/" }, "colorMode": "background" }
+    },
+    {
+      "type": "piechart",
+      "title": "Quotes by exercise style",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT exercise_style, count() AS quotes FROM options_pricing.option_quotes GROUP BY exercise_style ORDER BY quotes DESC" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] } }
+    },
+    {
+      "type": "barchart",
+      "title": "Quote health breakdown",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT 'valid' AS category, countIf(is_valid_quote) AS n FROM options_pricing.option_quotes UNION ALL SELECT 'two-sided (not valid)', countIf(is_two_sided AND NOT is_valid_quote) FROM options_pricing.option_quotes UNION ALL SELECT 'one-sided', countIf((has_bid AND NOT has_ask) OR (has_ask AND NOT has_bid)) FROM options_pricing.option_quotes UNION ALL SELECT 'empty', countIf(bid_price IS NULL AND ask_price IS NULL) FROM options_pricing.option_quotes UNION ALL SELECT 'crossed', countIf(is_crossed) FROM options_pricing.option_quotes" }
+      ],
+      "options": { "xField": "category", "orientation": "horizontal", "legend": { "showLegend": false } }
+    },
+    {
+      "type": "piechart",
+      "title": "Quotes by mode",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT mode, count() AS quotes FROM options_pricing.option_quotes GROUP BY mode ORDER BY quotes DESC" }
+      ],
+      "options": { "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] } }
+    },
+    {
+      "type": "barchart",
+      "title": "Top 20 underlyings by option count",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT underlying_id, count() AS options FROM options_pricing.option_quotes GROUP BY underlying_id ORDER BY options DESC LIMIT 20" }
+      ],
+      "options": { "xField": "underlying_id", "orientation": "horizontal", "legend": { "showLegend": false } }
+    },
+    {
+      "type": "table",
+      "title": "Data quality by chain",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT chain_id, exercise_style, total_quotes, valid_quotes_count, crossed_count, empty_quote_count, avg_spread_bps FROM options_pricing.chain_quality_metrics ORDER BY total_quotes DESC LIMIT 200" }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Mid price by strike — $chain_id",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT toString(strike) AS strike, anyIf(mid_price, option_type = 'call') AS call_mid, anyIf(mid_price, option_type = 'put') AS put_mid FROM options_pricing.option_quotes WHERE chain_id = '$chain_id' GROUP BY strike ORDER BY toFloat64(strike)" }
+      ],
+      "options": { "xField": "strike", "legend": { "showLegend": true, "placement": "bottom" } }
+    },
+    {
+      "type": "table",
+      "title": "Raw quotes — $chain_id",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [
+        { "refId": "A", "rawSql": "SELECT option_type, strike, bid_price, ask_price, mid_price, spread_bps, is_valid_quote, mode FROM options_pricing.option_quotes WHERE chain_id = '$chain_id' ORDER BY option_type, strike" }
+      ]
+    }
+  ]
+}
