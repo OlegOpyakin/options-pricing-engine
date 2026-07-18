@@ -25,7 +25,15 @@ FetchContent_Declare(
   GIT_SHALLOW    TRUE
 )
 
-FetchContent_MakeAvailable(nlohmann_json clickhouse_cpp)
+# --- Catch2 (unit tests) -----------------------------------------------------
+FetchContent_Declare(
+  catch2
+  GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+  GIT_TAG        v3.6.0
+  GIT_SHALLOW    TRUE
+)
+
+FetchContent_MakeAvailable(nlohmann_json clickhouse_cpp catch2)
 
 find_package(Threads REQUIRED)
 
@@ -50,3 +58,31 @@ target_link_libraries(ope
     nlohmann_json::nlohmann_json
     Threads::Threads
 )
+
+# --- Unit tests --------------------------------------------------------------
+# Links the parser/time-util sources directly (not the `ope` binary) so tests
+# don't need a ClickHouse connection: parsing is pure and DB-agnostic per
+# parser_specification.md §21 Non-Goals.
+enable_testing()
+
+add_executable(ope_tests
+  src/time_util.cpp
+  src/ivcurve_parser.cpp
+  tests/time_util_test.cpp
+  tests/ivcurve_parser_test.cpp
+)
+
+target_include_directories(ope_tests
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(ope_tests
+  PRIVATE
+    nlohmann_json::nlohmann_json
+    Catch2::Catch2WithMain
+)
+
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+include(CTest)
+include(Catch)
+catch_discover_tests(ope_tests)

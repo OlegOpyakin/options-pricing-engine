@@ -6,14 +6,17 @@ large and reproducible from the data provider.
 
 ## Layout
 
+Test data spans multiple exchanges (CME, CME_MINI, CBOE, CBOT, CBOT_MINI, COMEX,
+NASDAQ, NYMEX, NYSE), each delivered as one archive:
+
 ```
 data/
-└── CME/
-    └── CME-<UNDERLYING>/            # one folder per underlying futures contract
-        └── <PRODUCT>_<YYYYMMDD>.json   # one file per option chain (expiration)
+└── <EXCHANGE>/
+    └── <EXCHANGE>-<UNDERLYING>/     # one folder per underlying (futures, stock, ETF, or index)
+        └── <PRODUCT>_<YYYYMMDD>.json   # one file per option series (expiration)
 ```
 
-Example: `data/CME/CME-6AM2026/5AD_20260529.json`
+Examples: `data/CME/CME-6AM2026/5AD_20260529.json` (futures), `data/NASDAQ/NASDAQ-AAL/AAL_20260529.json` (stock).
 
 ## File format (`ivcurve` snapshot)
 

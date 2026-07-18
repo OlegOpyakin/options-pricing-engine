@@ -76,6 +76,22 @@ struct ParsedFile {
   ChainRow chain;
   UnderlyingQuoteRow underlying_quote;
   std::vector<OptionRow> options;
+
+  // marketData.id / marketData.time: distinct from ivcurve.id / ivcurve.now
+  // (real samples show different values for the two). Not yet mapped to a
+  // ClickHouse column — see parser_specification.md §23.2, which leaves that
+  // storage decision open. Captured here so parsing itself loses no source
+  // information regardless of what the storage layer later does with it.
+  std::string market_data_id;
+  int64_t market_data_time_ns = 0;
+
+  // Human-readable records of individual put/call entries that were skipped
+  // because their strike key was malformed/non-finite/non-positive (see
+  // parse_strike in ivcurve_parser.cpp). A single bad entry does not fail
+  // the whole file — real data has files where one degenerate placeholder
+  // strike sits alongside otherwise-valid quotes — but every skip must be
+  // documented here rather than silently dropped (parser_specification.md §25).
+  std::vector<std::string> skipped_options;
 };
 
 }  // namespace ope

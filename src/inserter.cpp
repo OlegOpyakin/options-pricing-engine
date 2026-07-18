@@ -10,6 +10,7 @@
 #include <clickhouse/types/types.h>
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -369,6 +370,14 @@ ClientOptions make_options(const ChConfig& cfg) {
       .SetDefaultDatabase(cfg.database);
 }
 
+// Case-insensitive ".json" check — a stray ".JSON" export should still be
+// picked up, not silently skipped with no diagnostic.
+bool has_json_extension(const fs::path& p) {
+  std::string ext = p.extension().string();
+  for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return ext == ".json";
+}
+
 // Collect the *.json files to import. A single file is taken as-is; a directory
 // is walked recursively.
 std::vector<std::string> collect_files(const std::string& path, std::string& error) {
@@ -389,7 +398,7 @@ std::vector<std::string> collect_files(const std::string& path, std::string& err
   if (fs::is_directory(status)) {
     for (auto it = fs::recursive_directory_iterator(p, ec);
          !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
-      if (it->is_regular_file() && it->path().extension() == ".json") {
+      if (it->is_regular_file() && has_json_extension(it->path())) {
         files.push_back(it->path().string());
       }
     }
@@ -441,6 +450,7 @@ bool Inserter::insert(const std::string& path) {
   std::atomic<std::size_t> files_ok{0};
   std::atomic<std::size_t> files_failed{0};
   std::atomic<std::size_t> option_rows{0};
+  std::atomic<std::size_t> options_skipped{0};
   std::atomic<bool> fatal{false};
   std::mutex log_mutex;
 
@@ -457,6 +467,13 @@ bool Inserter::insert(const std::string& path) {
           std::cerr << "[insert] skip " << *file << ": " << perr << "\n";
           continue;
         }
+        if (!parsed->skipped_options.empty()) {
+          options_skipped.fetch_add(parsed->skipped_options.size());
+          std::lock_guard<std::mutex> lk(log_mutex);
+          for (const auto& diag : parsed->skipped_options) {
+            std::cerr << "[insert] " << *file << ": skipped option " << diag << "\n";
+          }
+        }
         batches.underlyings.append(parsed->underlying);
         batches.chains.append(parsed->chain);
         batches.underlying_quotes.append(parsed->underlying_quote);
@@ -468,8 +485,27 @@ bool Inserter::insert(const std::string& path) {
       batches.flush_all(client);
     } catch (const std::exception& e) {
       fatal.store(true);
+      // Each Batch::flush() only clears its columns *after* a successful
+      // Insert (see e.g. OptionQuotesBatch::flush above), so whatever hasn't
+      // been durably written yet is still sitting in `batches` right now.
+      // Silently dropping it here would lose up to (batch_size - 1) rows per
+      // table with no record it ever happened — retry the flush once so a
+      // transient fault (e.g. one bad Insert) doesn't cost data that was
+      // otherwise fine, and report exactly what's lost if it isn't.
+      const std::size_t pending = batches.option_quotes.count + batches.underlyings.count +
+                                  batches.chains.count + batches.underlying_quotes.count;
+      std::string outcome;
+      if (pending > 0) {
+        try {
+          batches.flush_all(client);
+          outcome = " (" + std::to_string(pending) + " pending row(s) recovered on retry)";
+        } catch (const std::exception& flush_err) {
+          outcome = " (" + std::to_string(pending) +
+                    " pending row(s) LOST — retry flush also failed: " + flush_err.what() + ")";
+        }
+      }
       std::lock_guard<std::mutex> lk(log_mutex);
-      std::cerr << "[insert] worker aborted: " << e.what() << "\n";
+      std::cerr << "[insert] worker aborted: " << e.what() << outcome << "\n";
     }
   };
 
@@ -481,7 +517,8 @@ bool Inserter::insert(const std::string& path) {
   const auto elapsed = std::chrono::duration<double>(clock::now() - started).count();
   std::cout << "[insert] done in " << elapsed << "s: "
             << files_ok.load() << " ok, " << files_failed.load() << " failed, "
-            << option_rows.load() << " option rows\n";
+            << option_rows.load() << " option rows, "
+            << options_skipped.load() << " option(s) skipped (invalid strike)\n";
 
   return !fatal.load() && files_failed.load() == 0;
 }

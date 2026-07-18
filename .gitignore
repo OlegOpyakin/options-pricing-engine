@@ -18,3 +18,7 @@ venv/
 /clickhouse/logs/
 build/
 *.log
+
+# Claude Code project files — personal working notes, not shared project docs.
+/CLAUDE.md
+/.claude/
