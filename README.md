@@ -76,19 +76,6 @@ a file or a directory (walked recursively) into ClickHouse:
 ./build/ope insert data/CME # non-interactive one-shot (same command)
 ```
 
-Files are distributed to a pool of worker threads through a blocking queue; each
-worker parses JSON and streams rows into ClickHouse in batches. Connection and
-tuning are read from the environment (defaults in parentheses):
-
-| Variable | Purpose |
-| --- | --- |
-| `CLICKHOUSE_HOST` (`localhost`), `CLICKHOUSE_PORT` (`9000`) | server address (native TCP) |
-| `CLICKHOUSE_DB` (`options_pricing`), `CLICKHOUSE_USER` (`default`), `CLICKHOUSE_PASSWORD` (empty) | credentials |
-| `OPE_WORKERS` (CPU count) | number of parser/inserter threads |
-| `OPE_BATCH_SIZE` (`50000`) | rows accumulated before a batch `INSERT` |
-
-At the end of a run the tool prints a summary:
-
 ```text
 [insert] done in 24.0s: 30564 ok, 0 failed, 2067514 option rows, 15 option(s) skipped (invalid strike)
 ```
@@ -102,6 +89,24 @@ At the end of a run the tool prints a summary:
   non-positive (real data has a handful of `"0."` placeholder entries with
   no live quote at all). Each one is logged as
   `[insert] <file>: skipped option <detail>` — never silently discarded.
+
+## Importing from zip archives
+
+Data provider ships one zip per exchange (`CME.zip`, `NASDAQ.zip`, ...). Two
+helper scripts in `scripts/` extract into `data/` and run `ope insert` for you
+(run from inside the dev container):
+
+```bash
+# one archive
+bash scripts/import_zip.sh /path/to/CME.zip
+
+# whole download folder as-is (e.g. the Google Drive download folder,
+# zips side by side, no extra structure) — extracts all of them, then
+# runs one insert pass over data/
+bash scripts/import_folder.sh /path/to/drive-download-folder
+```
+
+Both accept an optional second argument to override the `data/` target dir.
 
 ## Tests
 
