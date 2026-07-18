@@ -68,12 +68,17 @@ ORDER BY (chain_id, snapshot_time);
 
 -- ============================================================================
 -- 3. FACT: underlying_quotes
---    The underlying (futures) bid/ask/last at each snapshot. This is the spot/
---    forward input S for pricing and for put-call parity.
+--    The underlying (futures) bid/ask/last as captured in each ivcurve file.
+--    Grain = one row per (chain, snapshot): every ivcurve file carries its own
+--    underlying snapshot, and those captures differ slightly across a
+--    underlying's files (same instant, independently sampled). Keeping chain_id
+--    lets pricing/parity use the underlying price from the SAME file as the
+--    option, instead of an arbitrary one — see the joins in the views below.
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS options_pricing.underlying_quotes
 (
     snapshot_time  DateTime64(9, 'UTC'),
+    chain_id       LowCardinality(String),           -- file this capture came from
     underlying_id  LowCardinality(String),
     mode           LowCardinality(String),           -- realtime | snapshot
     quote_time     Nullable(DateTime64(9, 'UTC')),   -- marketData.underlying.time
@@ -96,7 +101,7 @@ CREATE TABLE IF NOT EXISTS options_pricing.underlying_quotes
 )
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(snapshot_time)
-ORDER BY (underlying_id, snapshot_time);
+ORDER BY (underlying_id, chain_id, snapshot_time);
 
 -- ============================================================================
 -- 4. FACT: option_quotes  (core analytical table)
@@ -219,7 +224,7 @@ SELECT
     oq.is_valid_quote                                  AS is_valid_quote
 FROM options_pricing.option_quotes AS oq
 LEFT JOIN options_pricing.underlying_quotes AS uq
-       ON oq.underlying_id = uq.underlying_id
+       ON oq.chain_id = uq.chain_id
       AND oq.snapshot_time = uq.snapshot_time;
 
 -- 5c. Put-call pairs ---------------------------------------------------------
@@ -249,14 +254,13 @@ SELECT
     uq.last_price                                      AS underlying_last
 FROM options_pricing.option_quotes AS c
 INNER JOIN options_pricing.option_quotes AS p
-        ON  c.underlying_id   = p.underlying_id
-        AND c.expiration_date = p.expiration_date
-        AND c.strike          = p.strike
-        AND c.snapshot_time   = p.snapshot_time
-        AND c.option_type     = 'call'
-        AND p.option_type     = 'put'
+        ON  c.chain_id      = p.chain_id
+        AND c.strike        = p.strike
+        AND c.snapshot_time = p.snapshot_time
+        AND c.option_type   = 'call'
+        AND p.option_type   = 'put'
 LEFT JOIN options_pricing.underlying_quotes AS uq
-        ON  c.underlying_id = uq.underlying_id
+        ON  c.chain_id      = uq.chain_id
         AND c.snapshot_time = uq.snapshot_time;
 
 -- 5d. Per-chain data-quality metrics -----------------------------------------
